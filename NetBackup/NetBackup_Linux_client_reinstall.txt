@@ -1,0 +1,138 @@
+---
+
+# Purpose: For reinstallation NetBackup client version 9.1.0.1
+
+- hosts: "{{ hname|lower }}"
+  gather_facts: yes
+  name: Install NetBackup
+  tasks:
+ 
+     - name: change password
+       user:
+        name: "{{ NETBACKUP_USERNAME }}"
+        state: present
+        password: "{{ NETBACKUP_PASSWORD | password_hash('sha512') }}"
+       delegate_to: server1
+
+     - name: change password1
+       user:
+         name: "{{ NETBACKUP_USERNAME }}"
+         state: present
+         password: "{{ NETBACKUP_PASSWORD | password_hash('sha512') }}"
+       delegate_to: server2
+
+
+     - name: bp login
+       get_url:
+         url: "https://<Package-URL>.com/bpnbatl_server1.txt"
+         dest: /tmp
+         validate_certs:: false
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+       delegate_to: server1
+
+     - name: bp login1
+       get_url:
+         url: "https://<Package-URL>.com/bpnbatl_server2.txt"
+         dest: /tmp
+         validate_certs: yes
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+       delegate_to: server2
+
+     - name: Certificate unregister and register server1
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -login -info /tmp/bpnbatl_server1.txt
+         srvnm=`/usr/openv/netbackup/bin/nbcertcmd -listAllDomainCertificates | grep Active | awk '{print $2}' | grep {{ inventory_hostname }}`
+         if [ ! -z "$srvnm" ]
+         then 
+           /usr/openv/netbackup/bin/nbcertcmd -revokeCertificate -host $srvnm
+         fi
+       delegate_to: server1
+
+     - name: Certificate unregister and register server2
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -login -info /tmp/bpnbatl_server2.txt
+         srvnm1=`/usr/openv/netbackup/bin/nbcertcmd -listAllDomainCertificates | grep Active | awk '{print $2}' | grep {{ inventory_hostname }}`
+         if [ ! -z "$srvnm1" ]
+         then
+           /usr/openv/netbackup/bin/nbcertcmd -revokeCertificate -host $srvnm1
+         fi
+       delegate_to: server2
+
+     - file:
+         path: /var/crash/NB9
+         state: directory
+         mode: 0755
+
+     - name: Copy NetBackup Software
+       get_url:
+         url: "https://<Package-URL>.com/NetBackup_9.1.0.1_CLIENTS2.tar"
+         dest: /var/crash/NB9
+         validate_certs: yes
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+
+     - name: Execute untar operation
+       unarchive:
+         src: "/var/crash/NB9/NetBackup_9.1.0.1_CLIENTS2.tar"
+         dest: /var/crash/NB9
+         remote_src: yes
+
+     - name: Copy rpm and answer file
+       copy:
+         src: "/var/crash/NB9/snbwwdc-NetBackup/NBInstallAnswer.conf"
+         dest: /tmp
+         remote_src: yes
+
+     - name: Installation of NB 9.1.0.1
+       shell: |
+         rpm  -U VRTSnbpck.rpm
+         rpm  -U VRTSpbx.rpm
+         rpm  -U VRTSnbclt.rpm
+         rpm  -U VRTSnbjre.rpm
+         rpm  -U VRTSnbjava.rpm
+         rpm  -U VRTSpddea.rpm
+         rpm  -U VRTSnbcfg.rpm
+       args:
+         chdir: "/var/crash/NB9/NetBackup_9.1.0.1_CLIENTS2/NBClients/anb/Clients/usr/openv/netbackup/client/Linux/RedHat2.6.32/"
+
+     - name: CA Certificate from server1
+       shell: |
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -displayCACertDetail -server server1.com
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCACertificate -server server1.com
+         token_nm={{ inventory_hostname }}_{{ ansible_date_time.date }}_{{ ansible_date_time.minute }}_{{ ansible_date_time.second }}
+         server1_token=`ssh server1 "/usr/openv/netbackup/bin/nbcertcmd -createToken -name $token_nm -reissue -host {{ inventory_hostname }} -validFor 999D | awk '{print $2}'"`
+         echo $server1_token | awk '{print $2}' > /tmp/{{ inventory_hostname }}.txt
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCertificate -host {{ inventory_hostname }} -server server1.com -file /tmp/{{ inventory_hostname }}.txt 
+   
+     - name: Append content to first line of file
+       lineinfile:
+         path: /usr/openv/netbackup/bp.conf
+         insertbefore: BOF
+         line: "SERVER = server2.com"
+
+     - name: CA Certificate from server2
+       shell: |
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -displayCACertDetail -server server2.com
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCACertificate -server server2.com
+         token_nm={{ inventory_hostname }}_{{ ansible_date_time.date }}_{{ ansible_date_time.minute }}_{{ ansible_date_time.second }}
+         server2_token=`ssh server2 "/usr/openv/netbackup/bin/nbcertcmd -createToken -name $token_nm -reissue -host {{ inventory_hostname }} -validFor 999D | awk '{print $2}'"`
+         echo $server2_token | awk '{print $2}' > /tmp/{{ inventory_hostname }}.txt1
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCertificate -host {{ inventory_hostname }} -server server2.com -file /tmp/{{ inventory_hostname }}.txt1 
+
+     - file:
+         path: /var/crash/NB9
+         state: absent
+
+     - name: Logout bpnbat
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -logout
+       run_once: true
+       delegate_to: server1
+
+     - name: Logout bpnbat1
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -logout
+       run_once: true
+       delegate_to: server2

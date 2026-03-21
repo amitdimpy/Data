@@ -1,0 +1,118 @@
+---
+
+# Purpose: For installation NetBackup client version 9.1.0.1
+
+- hosts: "{{ hname|lower }}"
+  vars:
+     server1_token: XXXXXXXXXXXXXX 
+     server2_token: YYYYYYYYYYYYYY
+  tasks:
+
+     - name: change password
+       user:
+        name: "{{ NETBACKUP_USERNAME }}"
+        state: present
+        password: "{{ NETBACKUP_PASSWORD | password_hash('sha512') }}"
+       delegate_to: server1
+
+     - name: change password1
+       user:
+         name: "{{ NETBACKUP_USERNAME }}"
+         state: present
+         password: "{{ NETBACKUP_PASSWORD | password_hash('sha512') }}"
+       delegate_to: server2
+
+     - name: bp login
+       get_url:
+         url: "https://<Package-URL>.com/bpnbatl_server1.txt"
+         dest: /tmp
+         url_username: "{{ SNB_ARTIF_USERNAME }}"
+         url_password: "{{ SNB_ARTIF_PASSWORD }}"
+       delegate_to: server1
+
+     - name: bp login1
+       get_url:
+         url: "https://<Package-URL>.com/bpnbatl_server2.txt"
+         dest: /tmp
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+       delegate_to: server2
+
+     - file:
+         path: /var/crash/NB9
+         state: directory
+         mode: 0755
+
+     - name: Copy NetBackup software
+       get_url:
+         url: "https://<Package-URL>.com/NetBackup_9.1.0.1_CLIENTS2.tar"
+         dest: /var/crash/NB9
+         validate_certs: false
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+
+     - name: Execute untar operation
+       unarchive:
+         src: /var/crash/NB9/NetBackup_9.1.0.1_CLIENTS2.tar
+         dest: /var/crash/NB9
+         remote_src: yes
+
+     - name: Copy answer file
+       get_url:
+         url: "https://<Package-URL>.com/NBInstallAnswer.conf"
+         dest: /tmp
+         validate_certs: false
+         url_username: "{{ PKG_USERNAME }}"
+         url_password: "{{ PKG_PASSWORD }}"
+
+     - name: Installation of NB 9.1.0.1
+       shell: |
+         rpm  -U VRTSnbpck.rpm
+         rpm  -U VRTSpbx.rpm
+         rpm  -U VRTSnbclt.rpm
+         rpm  -U VRTSnbjre.rpm
+         rpm  -U VRTSnbjava.rpm
+         rpm  -U VRTSpddea.rpm
+         rpm  -U VRTSnbcfg.rpm
+       args:
+         chdir: "/var/crash/NB9/NetBackup_9.1.0.1_CLIENTS2/NBClients/anb/Clients/usr/openv/netbackup/client/Linux/RedHat2.6.32/"
+
+     - name: CA Certificate for server1
+       shell: |
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -displayCACertDetail -server server1.sgp.st.com
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCACertificate -server server1.sgp.st.com
+         token_nm={{ inventory_hostname }}_{{ ansible_date_time.date }}_{{ ansible_date_time.minute }}_{{ ansible_date_time.second }}
+         server1_token=`ssh server1 "/usr/openv/netbackup/bin/nbcertcmd -createToken -name $token_nm -host {{ inventory_hostname }} -maxUses 999 -validFor 999D | awk '{print $2}'"`
+         echo $server1_token | awk '{print $2}' > /tmp/{{ inventory_hostname }}.txt
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCertificate -host {{ inventory_hostname }} -server server1.sgp.st.com -file /tmp/{{ inventory_hostname }}.txt 
+   
+     - name: Append content to first line of file
+       lineinfile:
+         path: /usr/openv/netbackup/bp.conf
+         insertbefore: BOF
+         line: "SERVER = server2.sgp.st.com"
+
+     - name: CA Certificate from server2
+       shell: |
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -displayCACertDetail -server server2.sgp.st.com
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCACertificate -server server2.sgp.st.com
+         token_nm={{ inventory_hostname }}_{{ ansible_date_time.date }}_{{ ansible_date_time.minute }}_{{ ansible_date_time.second }}
+         server2_token=`ssh server2 "/usr/openv/netbackup/bin/nbcertcmd -createToken -name $token_nm -host {{ inventory_hostname }} -maxUses 999 -validFor 999D | awk '{print $2}'"`
+         echo $server2_token | awk '{print $2}' > /tmp/{{ inventory_hostname }}.txt
+         echo y | /usr/openv/netbackup/bin/nbcertcmd -getCertificate -host {{ inventory_hostname }} -server server2.sgp.st.com -file /tmp/{{ inventory_hostname }}.txt 
+
+     - file:
+         path: /var/crash/NB9
+         state: absent
+
+     - name: Logout bpnbat
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -logout
+       run_once: true
+       delegate_to: server1
+
+     - name: Logout bpnbat1
+       shell: |
+         /usr/openv/netbackup/bin/bpnbat -logout
+       run_once: true
+       delegate_to: server2

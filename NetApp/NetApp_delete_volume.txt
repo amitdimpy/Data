@@ -1,0 +1,36 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Information to Delete Volume
+  vars:
+  #  ansible_python_interpreter: /usr/bin/python3
+  #  hostname: "{{ hostname }}"
+  #  username: "{{ USERNAME }}"
+  #  password: "{{ PASSWORD }}"
+  #  vserver: "{{ vserver }}"
+  #  aggr: "{{ aggr }}"
+  #  vol_name: "{{ vol_name }}"
+
+  tasks:
+  - name: Delete Volume
+    na_ontap_volume:
+      state: absent
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      aggregate_name: "{{ aggr }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Delete Policy assigned to volume (do not use default policy)
+    na_ontap_export_policy:
+      state: absent
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false

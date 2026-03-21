@@ -1,0 +1,96 @@
+---
+- hosts: "{{ hname|lower }}"
+  gather_facts: yes
+  name: Pre-requisites
+
+  tasks:
+
+  - name: Set python interpreter
+    shell: |
+        if [ -f /usr/bin/python3 ]
+        then
+          ansible_python_interpreter=/usr/bin/python3
+        elif [ -f /usr/bin/python2 ]
+        then
+          ansible_python_interpreter=/usr/bin/python2
+        fi
+
+  - name: Generate QSDK token for CV login
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/Login"
+      method: POST
+      body_format: json
+      headers: 
+        Accept: "application/json"
+        Content-Type: "application/json"
+      body: 
+        username: "{{ USERNAME }}"
+        password: "{{ PASSWORD }}"
+      status_code: 200
+    register: result
+    delegate_to: localhost
+  
+  - debug: var=result.json.token
+
+  - name: Check display name
+    shell: >
+        commvault status |
+        tail -3 |
+        head -1 |
+        awk -F "= " '{print $NF}'
+    register: display_name
+
+  - debug: var=display_name.stdout
+
+  - name: Generate Backupset Id
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/GetId?clientname={{ display_name.stdout }}&agent=File%20System&backupset=defaultBackupSet"
+      method: GET
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Content-Type: "application/json"
+        Authtoken: "{{ result.json.token }}"
+      status_code: 200
+    register: bkpsetid 
+    delegate_to: localhost
+
+  - debug: var=bkpsetid.json.backupsetId
+
+  - name: Backupset Backup
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/Backupset/{{ bkpsetid.json.backupsetId }}/action/backup"
+      method: POST
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Authtoken: "{{ result.json.token }}"
+      status_code: 200
+    register: jobID
+    delegate_to: localhost
+
+  - debug: var=jobID.json.jobIds
+
+  - name: Job status
+    uri:
+      url: "http://<COMMVAULT-URL>.com/webconsole/api/Job/{{ jobID.json.jobIds.0 }}"
+      method: GET
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Authtoken: "{{ result.json.token }}"
+      status_code: 200
+    register: statuscontent
+
+  - debug: var=statuscontent.json.jobs.0.jobSummary.status
+ 
+  - name: Commvault logout
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/Logout"
+      method: POST
+      body_format: json
+      headers:
+        Accept: 'application/json'
+        Authtoken: "{{ result.json.token }}"
+    register: logmsg 
+    delegate_to: localhost

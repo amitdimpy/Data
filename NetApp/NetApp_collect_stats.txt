@@ -1,0 +1,133 @@
+---
+
+# Purpose: Collect data for NetApp
+
+ - hosts: XXXXX
+   gather_facts: no
+
+   tasks:
+
+   - name: NetApp SOX data collection
+     shell: |
+       dir=/sox_netapp
+       CUR_YEAR=`date +%Y`
+       CUR_MON=`date +%m`
+       CUR_DATE=`date +%d`
+       CUR_mon=`date +%b`
+       log_date=`date +%d-%h-%Y-%H:%M:%S`
+       if [ ! -d "$dir" ]
+       then
+         echo "Directory $dir does not exist on eul394, please check"
+         exit 1
+       fi
+       net_arr='<NetApp1>'
+       for HOSTS in ${net_arr}
+       do
+         path=${dir}/${HOSTS}/${CUR_YEAR}/${CUR_mon}/${CUR_DATE}
+         mkdir -p ${path}
+         LOG=${path}/${HOSTS}.log.${log_date}.txt
+         echo "NetApp Details" > $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} system node show -fields node,owner,model,serialnumber,uptime,systemid,health | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "NetApp Time" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} date | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "Vserver Show" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} vserver show | grep -i running | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "Aggr Utilization" >> $LOG;echo "==========================" >> $LOG        
+         ssh <User1>@${HOSTS} storage aggregate show | grep -vE 'Last login time|entries were displayed.|normal' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "Volume Utilization" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} volume show | grep -vE 'Last login time|entries were displayed.' | grep -v '^$'>> $LOG
+         echo " " >> $LOG; echo "Qtree Status" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} qtree status | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "Snapmirror Show" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} snapmirror show | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+         echo " " >> $LOG; echo "Snapshot show" >> $LOG;echo "==========================" >> $LOG
+         ssh <User1>@${HOSTS} vserver show | grep -i running | grep -vE 'Last login time|entries were displayed.' | awk '{print $1}' | grep -v '^$' > $LOG.vserver
+         for vser in `cat $LOG.vserver`
+         do
+           volum='vol1 vol2 vol3'
+           for VOL in ${volum}
+           do
+             ssh <User1>@${HOSTS} volume snapshot show -vserver $vser -volume $VOL | grep -vE 'Last login time|entries were displayed.|Blocks' |  grep -v '^$' >> $LOG
+             snap_count=`ssh <User1>@${HOSTS} volume snapshot show -vserver $vser -volume $VOL | grep sv_daily | grep $CUR_YEAR-$CUR_MON | grep -v '^$' | wc -l` 
+             num_snap_count=`ssh <User1>@${HOSTS} volume snapshot show -vserver $vser -volume $VOL | grep sv_daily | grep -v '^$' | wc -l`
+             if [ ${snap_count} -ne ${CUR_DATE} ]
+             then
+                echo "Issue in count of snapvault snapshots, please check for $VOL hosted in $vser" >> $LOG
+                echo " " >> $LOG
+                if [ "$vser" = "<vserver1>" ]
+                then
+                  echo "Backup of <NetApp1> (<vserver1>) is NOK : Number of snapshot should be ${CUR_DATE}, which is ${snap_count}" >> $LOG
+                  echo " " >> $LOG
+                elif [ "$vser" = "<vserver2>" ]
+                then
+                  echo "Backup of <NetApp2> (<vserver2>) is NOK : Number of snapshot should be ${CUR_DATE}, which is ${snap_count}" >> $LOG
+                  echo " " >> $LOG
+                fi
+             else
+                echo "Count of Snapshots is correct for $VOL hosted in $vser" >> $LOG
+                echo " " >> $LOG
+                if [ "$vser" = "<vserver1>" ]
+                then
+                  echo "Backup of <NetApp1> (<vserver1>) is OK : Number of snapshot should be ${CUR_DATE}, which is ${snap_count}" >> $LOG
+                  echo " " >> $LOG
+                elif [ "$vser" = "<vserver2>" ]
+                then
+                  echo "Backup of <NetApp2> (<vserver2>) is OK : Number of snapshot should be ${CUR_DATE}, which is ${snap_count}" >> $LOG
+                  echo " " >> $LOG
+                fi
+             fi  
+             if [ ${num_snap_count} -ne 60 ]
+             then
+                echo "Snapshot count is less than 60 for $VOL hosted in $vser, please check" >> $LOG
+                echo " " >> $LOG
+                if [ "$vser" = "<vserver1>" ]
+                then
+                  echo "Backup of <NetApp1> (<vserver1>) is NOK : Number of snapshot is ${num_snap_count} which is less than 60" >> $LOG
+                  echo " " >> $LOG
+                elif [ "$vser" = "<vserver2>" ]
+                then
+                  echo "Backup of <NetApp2> (<vserver2>) is NOK : Number of snapshot is ${num_snap_count} which is less than 60" >> $LOG
+                  echo " " >> $LOG
+                fi
+             elif [ ${num_snap_count} -eq 60 ]
+             then
+                if [ "$vser" = "<vserver1>" ]
+                then                  
+                  echo "Backup of <NetApp1> (<vserver1>) is OK : Number of snapshot is ${num_snap_count}" >> $LOG
+                  echo " " >> $LOG
+                elif [ "$vser" = "<vserver2>" ]
+                then
+                  echo "Backup of <NetApp2> (<vserver2>) is OK : Number of snapshot is ${num_snap_count}" >> $LOG
+                  echo " " >> $LOG
+                fi
+             fi
+           done
+         done
+         echo " " >> $LOG; echo "Snapmirror event logs" >> $LOG;echo "==========================" >> $LOG
+         err_cnt=`ssh <User1>@${HOSTS} event notification history show -destination snmp-traphost | grep -v INFORMATIONAL | grep -iE 'snapmirror|snapvault' | grep -v '^$' | wc -l`
+         if [ ${err_cnt} -ne 0 ]
+         then
+           echo "Snapmirror error reported in event log, please check" >> $LOG
+         else
+           echo "No Snapmirror error reported in event log" >> $LOG
+         fi
+       done
+       echo " " >> $LOG; echo "Last Backup Status of and log collection directory with retention of 15 years" >> $LOG;echo " " >> $LOG
+       echo "Node Name: SOX_NETAPP_15Y" >> $LOG;echo " " >> $LOG
+       dsmc q fi -se=sox_netapp_15y | tail -5  >> $LOG
+       echo " " >> $LOG; echo "Node Name: SOX_NETAPP_15YGPX" >> $LOG;echo " " >> $LOG
+       dsmc q fi -se=sox_netapp_15ygpx | tail -5  >> $LOG
+       echo "List of users created" >> $LOG;echo "==========================" >> $LOG
+       ssh <User1>@${HOSTS} security login show | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+       echo " " >> $LOG;echo "Password Policy"  >> $LOG;echo "==========================" >> $LOG
+       ssh <User1>@${HOSTS} security login role config show -vserver ${HOSTS} -role admin | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+       echo " " >> $LOG;echo "Network Services Details"  >> $LOG;echo "==========================" >> $LOG
+       ssh <User1>@${HOSTS} network interface service show | grep -vE 'Last login time|entries were displayed.' | grep -v '^$' >> $LOG
+       sed 's/\r$//g' $LOG > $LOG.new;sed 's/\r$//g' $LOG.new > $LOG;rm $LOG.new $LOG.vserver
+       {
+       echo To: "XXXXXXXXX@abcd.com"
+       echo Cc: "XXXX@abcd.com"
+       echo From: "NETAPP_REPORT_${HOSTS}@XXXXX.com"
+       echo Subject: "Data Collected for NetApp ${HOSTS}"
+       cat $LOG
+       } | /usr/sbin/sendmail -v  XXX@abcd.com > /dev/null 2>&1 

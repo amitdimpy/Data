@@ -1,0 +1,162 @@
+---
+- hosts: "{{ hname|lower }}"
+  gather_facts: yes
+  name: Pre-requisites
+  vars:
+    CommSerHname: "<COMMVAULT>.com"
+    AUTHCODE: "XXXXXXX"
+
+  tasks:
+
+  - name: Set python interpreter
+    shell: |
+        if [ -f /usr/bin/python3 ]
+        then
+          ansible_python_interpreter=/usr/bin/python3
+        elif [ -f /usr/bin/python2 ]
+        then
+          ansible_python_interpreter=/usr/bin/python2
+        fi
+
+  - file:
+      path: /mnt/crash/CV
+      state: directory
+      mode: 0755
+  - name: Copy backup script from satellite server
+    get_url:
+      url: "https://<PACKAGE-URL>.com/custom_pkg.tar.gz"  #Package URL location
+      dest: /mnt/crash/CV
+      validate_certs: false
+      url_username: "{{ PKG_USERNAME }}"   #Package username and password
+      url_password: "{{ PKG_PASSWORD }}"
+
+  - name: Untar software package on server
+    unarchive:
+      src: /mnt/crash/CV/custom_pkg.tar.gz
+      dest: /mnt/crash/CV
+      remote_src: yes
+
+  - name: Execute the package installation script
+    shell: "/mnt/crash/CV/pkg/silent_install -p /mnt/crash/CV/pkg/default.xml"
+
+  - file:
+      path: /mnt/crash/CV
+      state: absent
+
+  - name: Generate QSDK token for CV login
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/Login"
+      method: POST
+      body_format: json
+      headers: 
+        Accept: "application/json"
+        Content-Type: "application/json"
+      body: 
+        username: "{{ USERNAME }}"
+        password: "{{ PASSWORD }}"
+      status_code: 200
+    register: result
+    delegate_to: localhost
+  
+  - debug: var=result.json.token
+
+  - name: Check CS hostname
+    shell: >
+        commvault status |
+        grep "CommServe Client Name" |
+        awk -F "= " '{print $NF}'
+    register: cscname
+
+  - debug: var=cscname.stdout
+
+  - name: Check display name
+    shell: >
+        commvault status |
+        tail -3 |
+        head -1 |
+        awk -F "= " '{print $NF}'
+    register: display_name
+
+  - debug: var=display_name.stdout
+
+  - name: Simwrapper check
+    shell: |
+        if [ "{{ cscname.stdout }}" != "azubw00082" ]
+        then
+           /opt/commvault/Base/SIMCallWrapper -OpType 1000 -CSHost "{{ CommSerHname }}" -ClientName "{{ display_name.stdout }}" -ClientHostName "{{ display_name.stdout }}" -authcode "{{ AUTHCODE }}"
+           /usr/bin/commvault stop
+           sleep 5
+           /usr/bin/commvault start
+           sleep 60
+        fi
+
+  - name: Pause of 5 minute
+    pause:
+      minutes: 5
+
+  - name: Generate Backupset Id
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/GetId?clientname={{ display_name.stdout }}&agent=File%20System&backupset=defaultBackupSet"
+      method: GET
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Content-Type: "application/json"
+        Authtoken: "{{ result.json.token }}"
+      status_code: 200
+    register: bkpsetid 
+    delegate_to: localhost
+
+  - debug: var=bkpsetid.json.backupsetId
+
+  - name: Backupset Backup
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/Backupset/{{ bkpsetid.json.backupsetId }}/action/backup"
+      method: POST
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Authtoken: "{{ result.json.token }}"
+      status_code: 200
+    register: jobID
+    delegate_to: localhost
+
+  - debug: var=jobID.json.jobIds
+
+  - name: Backup Job status
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/Job/{{ jobID.json.jobIds.0 }}"
+      method: GET
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Authtoken: "{{ result.json.token }}"
+    register: jsoncontent
+    delegate_to: localhost
+
+  - debug:
+      var: jsoncontent.json.jobs.0.jobSummary.status
+
+  - name: Job status
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/Job/{{ jobID.json.jobIds.0 }}"
+      method: GET
+      body_format: json
+      headers:
+        Accept: "application/json"
+        Authtoken: "{{ result.json.token }}"
+    register: statuscontent
+    delegate_to: localhost
+
+  - debug: var=statuscontent.json.jobs.0.jobSummary.status
+
+  - name: Commvault logout
+    uri:
+      url: "http://<COMMVAULT>.com/webconsole/api/Logout"
+      method: POST
+      body_format: json
+      headers:
+        Accept: 'application/json'
+        Authtoken: "{{ result.json.token }}"
+    register: logmsg 
+    delegate_to: localhost

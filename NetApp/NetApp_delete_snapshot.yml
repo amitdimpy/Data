@@ -1,0 +1,28 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Variables to delete snapshot of volume
+  vars:
+  #  ansible_python_interpreter: /usr/bin/python3
+  #  hostname: "{{ hostname }}"
+  #  username: "{{ USERNAME }}"
+  #  password: "{{ PASSWORD }}"
+  #  vserver: "{{ vserver }}"
+  #  vol_name: "{{ vol_name }}"
+  #  snapshot: "{{ snapshot_name }}"
+  #  vol_size: "{{ vol_size }}"
+  #  comment: "{{ comment }}"
+
+  - name: Delete snapshot of volume
+    tags:
+      - delete
+    netapp.ontap.na_ontap_snapshot:
+      state: absent
+      snapshot: "{{ snapshot_name }}"
+      volume: "{{ vol_name }}"
+      comment: "Comment"
+      vserver: "{{ vserver }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      hostname: "{{ hostname }}"

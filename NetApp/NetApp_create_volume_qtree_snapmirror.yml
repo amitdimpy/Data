@@ -1,0 +1,161 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Define variable to Create Volume, Qtree and Snapmirror Volume
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+#    hostname: NetApp1.com
+#    snap_hostname: NetApp2.com
+#    vserver: XXXXX
+#    snap_vserver: YYYYY
+#    aggr: aggr1_1
+#    vol_name: test_script
+#    clients: SERVER.com
+#    snap_clients: SERVER.com
+#    vol_size: 10
+#    vol_size_unit: gb
+#    qtree_name: q1
+#    snapshot_percent: 5
+#   export_pol_name: NetApp1_quota_policy,quota_policy_NetApp2   
+#    export_pol_name: NetApp1_quota_policy
+#    snap_export_pol_name: NetApp2_quota_policy
+#    disk_limit_size: 9gb
+#    soft_disk_limit_size: 9gb
+#    threshold_size: 9gb
+#   snapmirror_schedule: 5min,10min,15min,20min,25min,30min
+#    snapmirror_schedule: 30min
+  tasks:
+
+  - name: Create Policy
+    na_ontap_export_policy:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Setup rules
+    na_ontap_export_policy_rule:
+      state: present
+      policy_name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      client_match: "{{ clients }}"
+      ro_rule: any
+      rw_rule: any
+      super_user_security: any
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Create Volume
+    na_ontap_volume:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      aggregate_name: "{{ aggr }}"
+      size: "{{ vol_size }}"
+      size_unit: "{{ vol_size_unit }}"
+      policy: "{{ vol_name }}"
+      percent_snapshot_space: "{{ snapshot_percent }}"
+      junction_path: "/vol/{{ vol_name }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Create QTree
+    na_ontap_qtree:
+      state: present
+      name: "{{ qtree_name }}"
+      flexvol_name: "{{ vol_name }}"
+      export_policy: "{{ vol_name }}"
+      security_style: mixed
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Add/Set quota on qtree
+    na_ontap_quotas:
+      state: present
+      vserver: "{{ vserver }}"
+      volume: "{{ vol_name }}"
+      quota_target: "/vol/{{ vol_name }}/{{ qtree_name }}"
+      type: tree
+      policy: "{{ export_pol_name }}"
+      set_quota_status: True
+      disk_limit: "{{ disk_limit_size }}"
+      soft_disk_limit: "{{ soft_disk_limit_size }}"
+      threshold: "{{ threshold_size }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Create Policy for Snapmirror Volume
+    na_ontap_export_policy:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ snap_vserver }}"
+      hostname: "{{ snap_hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Setup rules for Snapmirror Volume
+    na_ontap_export_policy_rule:
+      state: present
+      policy_name: "{{ vol_name }}"
+      vserver: "{{ snap_vserver }}"
+      client_match: "{{ snap_clients }}"
+      ro_rule: any
+      rw_rule: any
+      super_user_security: any
+      hostname: "{{ snap_hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Create Snapmirror Volume
+    na_ontap_volume:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ snap_vserver }}"
+      aggregate_name: "{{ aggr }}"
+      size: "{{ vol_size }}"
+      size_unit: "{{ vol_size_unit }}"
+      policy: "{{ vol_name }}"
+      type: DP
+      percent_snapshot_space: "{{ snapshot_percent }}"
+      hostname: "{{ snap_hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+
+  - name: Create Snapmirror relationship
+    tags: create
+    na_ontap_snapmirror:
+      state: present
+      source_endpoint:
+        path: "{{ vserver + ':' + vol_name }}"
+      destination_endpoint:
+        path: "{{ snap_vserver + ':' + vol_name }}"
+      schedule: "{{ snapmirror_schedule }}"
+      hostname: "{{ snap_hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false

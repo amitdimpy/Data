@@ -1,0 +1,28 @@
+---
+
+# Purpose: For calculation of infinite policy size
+
+- hosts: "{{ server }}"
+
+  tasks:
+
+  - name: List of infinite policies and size occupied by them
+    shell: |
+       sum=0;start_date=01/01/1970;end_date=01/01/2050;to_gb=1048576
+       image=/usr/openv/netbackup/bin/admincmd/bpimagelist
+       log_date=`date +%d-%h-%Y-%H:%M:%S`;log_dir=/home/TSE/scripts/log;infi_pol_list=$log_dir/infi_pol_list.$log_date.txt
+       infi_img_list=$log_dir/infi_img_list.$log_date.txt;final_list=$log_dir/final_list.$log_date.txt
+       echo "$image -d $start_date -e $end_date -U | grep -i INFINITY"
+       $image -d $start_date -e $end_date -U | grep -i INFINITY >> $infi_img_list
+       echo "$image -d $start_date -e $end_date -U | grep -i INFINITY | awk '{print $10}' | sort -u"
+       $image -d $start_date -e $end_date -U | grep -i INFINITY | awk '{print $10}' | sort -u >> $infi_pol_list
+       for i in `cat $infi_pol_list`
+       do
+         tot=`grep -w $i $infi_img_list  | awk '{print $5}' | paste -s -d "+" | bc`
+         sum=`scale=2; echo $tot / $to_gb | bc`
+         echo "Policy : $i ; Capacity : $sum GB " >> $final_list
+         echo "=======================================================" >> $final_list
+         grep -w $i $infi_img_list >> $final_list
+         echo "=======================================================" >> $final_list
+       done
+       mailx -s "Infinite Policy Report" -r "Infinite_Report_Info" -a "$final_list" -c XXXXXX@yyyy.com

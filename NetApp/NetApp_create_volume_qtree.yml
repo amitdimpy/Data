@@ -1,0 +1,93 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Define variable to Create Volume
+  vars:
+  #  ansible_python_interpreter: /usr/bin/python3
+  #  hostname: "{{ hostname }}"
+  #  username: "{{ USERNAME }}"
+  #  password: "{{ PASSWORD }}"
+  #  vserver: "{{ vserver }}"
+  #  aggr: "{{ aggr }}"
+  #  vol_name: "{{ vol_name }}"
+  #  clients: "{{ clients }}"
+  #  vol_size: "{{ vol_size }}"
+  #  vol_size_unit: gb
+  #  qtree_name: "{{ qtree_name }}"
+  #  snapshot_percent: "{{ snapshot_percent }}"
+  #  export_pol_name: "{{ export_pol_name }}"
+  #  disk_limit_size: "{{ disk_limit_size }}"
+  #  soft_disk_limit_size: "{{ soft_disk_limit_size }}"
+  #  threshold_size: "{{ threshold_size }}" 
+  tasks:
+  - name: Create Policy
+    na_ontap_export_policy:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Setup rules
+    na_ontap_export_policy_rule:
+      state: present
+      policy_name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      client_match: "{{ clients }}"
+      ro_rule: any
+      rw_rule: any
+      super_user_security: any
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Create Volume
+    na_ontap_volume:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      aggregate_name: "{{ aggr }}"
+      size: "{{ vol_size }}"
+      size_unit: "{{ vol_size_unit }}"
+      policy: "{{ vol_name }}"
+      percent_snapshot_space: "{{ snapshot_percent }}"
+      junction_path: "/vol/{{ vol_name }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Create QTree
+    na_ontap_qtree:
+      state: present
+      name: "{{ qtree_name }}"
+      flexvol_name: "{{ vol_name }}"
+      export_policy: "{{ vol_name }}"
+      security_style: mixed
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Add/Set quota on qtree
+    na_ontap_quotas:
+      state: present
+      vserver: "{{ vserver }}"
+      volume: "{{ vol_name }}"
+      quota_target: "/vol/{{ vol_name }}/{{ qtree_name }}"
+      type: tree
+      policy: "{{ export_pol_name }}"
+      set_quota_status: True
+      disk_limit: "{{ disk_limit_size }}"
+      soft_disk_limit: "{{ soft_disk_limit_size }}"
+      threshold: "{{ threshold_size }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false

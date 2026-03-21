@@ -1,0 +1,30 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Variables to create snapshot of volume
+  vars:
+  #  ansible_python_interpreter: /usr/bin/python3
+  #  hostname: "{{ hostname }}"
+  #  username: "{{ USERNAME }}"
+  #  password: "{{ PASSWORD }}"
+  #  vserver: "{{ vserver }}"
+  #  vol_name: "{{ vol_name }}"
+  #  snapshot: "{{ snapshot_name }}"
+  #  vol_size: "{{ vol_size }}"
+  #  comment: "{{ comment }}"
+
+  - name: Create snapshot of volume
+    tags:
+      - create
+    netapp.ontap.na_ontap_snapshot:
+      state: present
+      snapshot: "{{ snapshot_name }}"
+      volume: "{{ vol_name }}"
+      comment: "Comment"
+      expiry_time: "2022-02-04T14:00:00-05:00"
+      vserver: "{{ vserver }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      hostname: "{{ hostname }}"
+

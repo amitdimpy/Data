@@ -1,0 +1,154 @@
+#!/bin/sh
+###############################################
+# Purpose : Daily report on filer status
+###############################################
+
+
+filer='NetApp1 NetApp2 NetApp3 NetApp4'
+dir=/home/logs
+cnt=/usr/bin/ssh
+log_date=`date +%d-%h-%Y-%H:%M:%S`
+for i in $filer
+do
+	tr_fil_nm=`echo $i | tr '[:lower:]' '[:upper:]'`
+	echo "#####################################"  > $dir/$i.$log_date
+	echo "    STATUS OF FILER : $tr_fil_nm" >> $dir/$i.$log_date
+	echo "#####################################"  >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	echo "Filer Information" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i sysconfig -v | grep -iE 'Model Name|System Serial Number:|System ID:' >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+        $cnt $i sysconfig -v | grep -i "Memory Size:" | head -1  >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	up_time=`$cnt $i uptime`
+	echo "UPTIME :$up_time" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	ver_sion=`$cnt $i version`
+	echo "ONTAP VERSION : $ver_sion" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	total_aggr=`$cnt $i aggr status | awk '{print $1,$2}' | grep -i online | awk '{print $1}' | wc -l`
+	echo "TOTAL AGGR : $total_aggr" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	total_vol=`$cnt $i vol status | awk '{print $1,$2}' | grep -i online | awk '{print $1}' | wc -l`
+	echo "TOTAL VOLUMES : $total_vol" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i df -A | grep -v .snapshot | awk '{print $2}' | grep -v kbytes > $dir/$i.aggr_size_alloc.$log_date
+	aggr_size=0
+	for j in `cat $dir/$i.aggr_size_alloc.$log_date`
+	do
+		aggr_size=`expr $aggr_size + $j`
+	done
+	aggr_size_MB=`expr $aggr_size / 1024`; aggr_size_GB=`expr $aggr_size_MB / 1024`;
+	echo "TOTAL AGGR SIZE ALLOCATED : $aggr_size_MB MBytes / $aggr_size_GB GBytes" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i df -A | grep -v .snapshot | awk '{print $3}' | grep -v used > $dir/$i.aggr_size_used.$log_date
+	aggr_used=0
+	for k in `cat $dir/$i.aggr_size_used.$log_date`
+	do
+		aggr_used=`expr $aggr_used + $k`
+	done
+	aggr_used_MB=`expr $aggr_used  / 1024`; aggr_used_GB=`expr $aggr_used_MB  / 1024`;
+	echo "TOTAL AGGR SIZE USED : $aggr_used_MB MBytes / $aggr_used_GB GBytes" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	spare_disks=`$cnt $i vol status -s | grep spare | grep -iE 'FCAL|SAS' | wc -l`
+	echo "TOTAL SPARE DISKS : $spare_disks" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i vol status -s | awk '{print $10}' | grep -v '^$' | grep -v RPM | awk -F "/" '{print $1}' > $dir/$i.spare_size_avl.$log_date
+	spare_size_MB=0; spare_size_MB=`/usr/bin/paste -s -d "+" $dir/$i.spare_size_avl.$log_date | bc`
+	spare_size_GB=`expr $spare_size_MB  / 1024`
+	echo "TOTAL SIZE OF SPARE DISKS : $spare_size_MB MBytes / $spare_size_GB GBytes" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date	
+	fail_disks=`$cnt $i vol status -f | tail -1 | awk '{print $1$2$3}'`
+	if [ "$fail_disks" == "Brokendisks(empty)" ]
+	then
+		fail_disks=`$cnt $i vol status -f | tail -1`
+		echo "FAILED DISKS : $fail_disks" >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+	else
+		fail_disks="There are failed disks in filer, please check urgently"
+		echo "FAILED DISKS : $fail_disks" >> $dir/$i.$log_date
+		$cnt $i vol status -f | tail -1 >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+	fi
+	cf_status=`$cnt $i cf status`
+	echo "CLUSTER STATUS : $cf_status" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	snap_status=`$cnt $i snapmirror status | grep -iE 'broken|unknown'`
+	if [ -z "$snap_status" ]
+	then
+		echo "SNAPMIRROR STATUS : ALL OK" >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+	else
+		echo "SNAPMIRROR STATUS : Following snapmirror is/are in broken/unknown state, please check" >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+		echo "$snap_status" >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+	fi
+	snap_size=`$cnt $i  df -h | grep "snap reserve" | awk '{print $6,$NF}' | awk -F"%" '$1 > 90 {print $1"%",$2}'`
+	if [ -z "$snap_size" ]
+	then
+		echo "NO SNAPSHOTS USAGE > 90%" >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+	else
+		echo "SNAPSHOTS USAGE > 90% ARE : " >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+		$cnt $i  df -h | grep "snap reserve" | awk '{print $6,$NF}' | awk -F"%" '$1 > 90 {print $1"%",$2}' >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+	fi
+	non_std_snap=`$cnt $i snap list | grep -v -e Volume -e "working..." -e "----------  ----------  ------------  --------" -e hourly -e nightly -e weekly -e NetApp4 -e date -e snapmir* -e bck* -e saf -e gpx* -e root -e "No snapshots exist." | sed '/^$/d'`
+	if [ -z "$non_std_snap" ]
+	then
+		echo "THERE ARE NO NON-STANDARD SNAPSHOTS" >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+	else
+		echo "THERE ARE NON-STANDARD SNAPSHOTS : " >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+		$cnt $i snap list | grep -v -e Volume -e "working..." -e "----------  ----------  ------------  --------" -e hourly -e nightly -e weekly -e NetApp4 -e date -e snapmir* -e bck* -e saf -e gpx* -e root -e "No snapshots exist." | sed '/^$/d' >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+	fi
+	dedup_status=`$cnt $i license | grep a_sis | awk '{print $2$NF}'`
+	if [ "$dedup_status" == "notlicensed" ]
+	then
+		echo "DEDUP STATUS : NOT ENABLED" >> $dir/$i.$log_date
+		echo " "  >> $dir/$i.$log_date
+	else
+#		$cnt $i sis status | grep -i Enabled | awk '{print $1}' | awk -F"/" '{print $3}' > $dir/$i.dedup_status.$log_date
+		echo "DEDUP STATUS : ENABLED" >> $dir/$i.$log_date
+		$cnt $i sis status >> $dir/$i.$log_date
+		echo " " >> $dir/$i.$log_date
+#		if [ -s "$dir/$i.dedup_status.$log_date" ]
+#		then
+#			echo " " >> $dir/$i.$log_date
+#		else
+#			echo " " >> $dir/$i.$log_date
+#			$cnt $i df -s | head -1 >> $dir/$i.$log_date 	
+#			for l in `cat $dir/$i.dedup_status.$log_date`
+#			do
+#				$cnt $i df -s $l | tail -1 >> $dir/$i.$log_date
+#			done
+#			echo " " >> $dir/$i.$log_date
+#		fi
+	fi
+	echo "SYSTEM STATISTICS" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i sysstat -u -c 4 2 >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	echo "AVERAGE CPU USAGE" >> $dir/$i.$log_date
+	echo " "  >> $dir/$i.$log_date
+	$cnt $i sysstat -m -c 10 2 >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	echo "PROTOCOL STATISTICS" >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	$cnt $i sysstat -c 10 -x 3 >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	echo "NETWORK STATUS" >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+        $cnt $i ifconfig -a >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+	echo "IFGRP STATUS" >> $dir/$i.$log_date
+        echo " "  >> $dir/$i.$log_date
+        $cnt $i ifgrp status >> $dir/$i.$log_date     
+        echo " "  >> $dir/$i.$log_date
+        cat $dir/$i.$log_date | mailx -s "FILER $tr_fil_nm STATUS REPORT" -r XXXXX@abcd.com YYYYY@abcd.com
+done

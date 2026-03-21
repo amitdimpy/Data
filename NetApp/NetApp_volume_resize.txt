@@ -1,0 +1,52 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Define variable to Resize Volume
+  # vars:
+  #   ansible_python_interpreter: /usr/bin/python3
+  #   hostname: NetApp1.com
+  #   username: admin
+  #   password: xxxxxx
+  #   vserver: NetApp1-nfs
+  #   aggr: aggr1_1
+  #   vol_name: amitansiblevoltest
+  #   vol_size: 50
+  #   vol_size_unit: gb
+  #   percent_snapshot_space: 5
+  tasks:
+  - name: Resize Volume
+    na_ontap_volume:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      aggregate_name: "{{ aggr }}"
+      size: "{{ vol_size }}"
+      size_unit: "{{ vol_size_unit }}"
+      policy: "{{ vol_name }}"
+      percent_snapshot_space: 5
+      junction_path: "/vol/{{ vol_name }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Quota update
+    na_ontap_quotas:
+      state: present
+      vserver: "{{ vserver }}"
+      volume: "{{ vol_name }}"
+      qtree_name: "{{ qtree_name }}"
+      quota_target: "/vol/{{ vol_name }}/{{ qtree_name }}"
+      type: tree
+      policy: "{{ export_pol_name }}"
+      disk_limit: "{{ disk_limit }}"
+      soft_disk_limit: "{{ soft_disk_limit }}"
+      threshold: "{{ threshold }}"
+      set_quota_status: True
+      activate_quota_on_change: resize
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false

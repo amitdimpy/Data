@@ -1,0 +1,93 @@
+#!/bin/sh
+
+dir=/home/TSM/scripts
+server=`/bin/hostname`
+TSM_SERVER="server1 server2"
+TSM_LM="LM1"
+dsmadm=/usr/bin/dsmadmc
+userid=uname
+paswd=pass
+cmd1="$dsmadm -id=$userid -pa=$paswd"
+log_date=`date +%d-%h-%Y-%H:%M:%S`
+file1=TSM_final_monitor.txt
+
+if [ -f "$dir/$file1" ]
+then
+	rm $dir/$file1 > /dev/null 2>&1
+	rm $dir/*.tsm > /dev/null 2>&1	
+	touch $dir/$file1
+else
+	touch $dir/$file1
+	rm $dir/*.tsm > /dev/null 2>&1
+fi
+
+for TSM_SER in $TSM_SERVER
+do
+	echo "#####################################################################################################" > $dir/$TSM_SER.tsm
+	echo "		Report for TSM SERVER : $TSM_SER on $server DATE : $log_date	" >> $dir/$TSM_SER.tsm
+	echo "#####################################################################################################" >> $dir/$TSM_SER.tsm
+	echo "STORAGE POOL UTILIZATION" >> $dir/$TSM_SER.tsm
+	echo "========================" >> $dir/$TSM_SER.tsm
+	$cmd1 -se=$TSM_SER 'query stgpool' >> $dir/$TSM_SER.stg.tmp.tsm
+	tot=`sed -n '$=' $dir/$TSM_SER.stg.tmp.tsm` ; tot=`expr $tot - 2` ; sed -n '11,'$tot' p' $dir/$TSM_SER.stg.tmp.tsm >> $dir/$TSM_SER.tsm
+	var1=`$cmd1 -se=$TSM_SER 'select LAST_BACKUP_DATE from db' | sed -n '13p'`
+#	var2=`$cmd1 -se=$TSM_SER 'run total_data' | sed -n '13p'`
+	echo "LAST DB BACKUP DATE : $var1" >> $dir/$TSM_SER.tsm
+	echo " " >> $dir/$TSM_SER.tsm
+#	echo "TOTAL DATA BACKED UP IN LAST 24 HOURS IN GB : $var2" >> $dir/$TSM_SER.tsm
+#        echo " " >> $dir/$TSM_SER.tsm
+	$cmd1 -se=$TSM_SER 'SELECT stgpool_name,devclass,maxscratch,numscratchused FROM stgpools' | grep -E 'STGPOOL|--------|TAPEPOOL' >> $dir/$TSM_SER.tsm
+	cat $dir/$TSM_SER.tsm >> $dir/$file1
+	echo " "  >> $dir/$file1
+	bkp_sum="select cast(sum(bytes/1048576) as decimal(18,2)) as total from summary where activity='BACKUP' and start_time>=current_timestamp-24 hours"
+	rest_sum="select cast(sum(bytes/1048576) as decimal(18,2)) as total from summary where activity='RESTORE' and start_time>=current_timestamp-24 hours"
+	var5=`$cmd1 -se=$TSM_SER $bkp_sum | sed -n '13p' | awk '{print $1}'`
+	var6=`$cmd1 -se=$TSM_SER $rest_sum | sed -n '13p' | awk '{print $1}'`	
+#	echo "Total Data BACKED UP IN 24 Hours( In MBs ):-  $var5" >> $dir/$file1
+#	echo "Total Data RESTORED IN  24 Hours( In MBs ):-  $var6" >> $dir/$file1
+	echo "Total Data BACKED UP IN 24 Hours( In GBs ):-  `echo "scale=2; $var5 / 1024" | bc`" >> $dir/$file1
+	echo " " >> $dir/$file1
+	if [ ! -z "$var6" ]
+	then
+		echo "Total Data RESTORED IN  24 Hours( In GBs ):-  `echo "scale=2; $var6 / 1024" | bc`" >> $dir/$file1
+	else
+		echo "Total Data RESTORED IN  24 Hours( In GBs ):-  $var6" >> $dir/$file1
+	fi
+        echo " "  >> $dir/$file1
+done
+
+for TSM_SER_LM in $TSM_LM
+do
+	echo "#######################################################################################################" > $dir/$TSM_SER_LM.tsm
+	echo "		Report for TSM-LM SERVER : $TSM_SER_LM on $server DATE : $log_date	" >> $dir/$TSM_SER_LM.tsm
+	echo "#######################################################################################################" >> $dir/$TSM_SER_LM.tsm
+	echo "STORAGE POOL UTILIZATION" >> $dir/$TSM_SER_LM.tsm
+	echo "========================" >> $dir/$TSM_SER_LM.tsm
+	$cmd1 -se=$TSM_SER_LM 'query stgpool' >> $dir/$TSM_SER_LM.stglm.tmp.tsm
+	tot=`sed -n '$=' $dir/$TSM_SER_LM.stglm.tmp.tsm` ; tot=`expr $tot - 2` ; sed -n '11,'$tot' p' $dir/$TSM_SER_LM.stglm.tmp.tsm >> $dir/$TSM_SER_LM.tsm
+	var3=`$cmd1 -se=$TSM_SER_LM 'select LAST_BACKUP_DATE from db' | sed -n '13p'`
+	var4=`$cmd1 -se=$TSM_SER_LM "select count(*) from libvolumes where status='Scratch'" | sed -n '13p'`
+	echo "LAST DB BACKUP DATE : $var3" >> $dir/$TSM_SER_LM.tsm
+	echo " " >> $dir/$TSM_SER_LM.tsm
+	echo "TOTAL SCRATCH TAPES : $var4" >> $dir/$TSM_SER_LM.tsm
+	echo " " >> $dir/$TSM_SER_LM.tsm
+	var7=`$cmd1 -se=$TSM_SER_LM 'q drive' | grep LIB | wc -l`
+	echo "TOTAL DRIVES EXISTS : $var7" >> $dir/$TSM_SER_LM.tsm
+        echo " " >> $dir/$TSM_SER_LM.tsm
+	echo "DRIVE STATUS" >> $dir/$TSM_SER_LM.tsm
+	echo "============" >> $dir/$TSM_SER_LM.tsm
+#	$cmd1 -se=$TSM_SER_LM 'query drive' >> $dir/$TSM_SER_LM.drive.tmp.tsm
+#	tot=`sed -n '$=' $dir/$TSM_SER_LM.drive.tmp.tsm` ; tot=`expr $tot - 2` ; sed -n '11,'$tot' p' $dir/$TSM_SER_LM.drive.tmp.tsm >> $dir/$TSM_SER_LM.tsm
+#	echo "PATH STATUS" >> $dir/$TSM_SER_LM.tsm
+#	echo "===========" >> $dir/$TSM_SER_LM.tsm
+#	$cmd1 -se=$TSM_SER_LM 'query path' >> $dir/$TSM_SER_LM.path.tmp.tsm
+#	tot=`sed -n '$=' $dir/$TSM_SER_LM.path.tmp.tsm` ; tot=`expr $tot - 2` ; sed -n '11,'$tot' p' $dir/$TSM_SER_LM.path.tmp.tsm >> $dir/$TSM_SER_LM.tsm
+#	cat $dir/$TSM_SER_LM.tsm >> $dir/$file1
+##NEW
+	$cmd1 -se=$TSM_SER_LM 'SELECT cast((b.source_name) as char(16)) as source_name, cast((a.library_name) as char(11)) as library, cast((a.drive_name) as char(15)) as drive, cast((a.drive_serial) as char(12)) as serial, cast((b.device) as char(16)) as device, cast((a.online) as char(12)) as drive_online, cast((b.online) as char(12)) as path_online  FROM drives a, paths b WHERE a.drive_name=b.destination_name and a.library_name=b.library_name' >> $dir/$TSM_SER_LM.drivepath.tmp.tsm
+	tot=`sed -n '$=' $dir/$TSM_SER_LM.drivepath.tmp.tsm` ; tot=`expr $tot - 2` ; sed -n '11,'$tot' p' $dir/$TSM_SER_LM.drivepath.tmp.tsm >> $dir/$TSM_SER_LM.tsm
+	cat $dir/$TSM_SER_LM.tsm >> $dir/$file1
+done
+rm $dir/*.tsm > /dev/null 2>&1
+#/bin/mail -s "Monitoring Status of $server" XXXX@abcd.com < $dir/$file1
+#cat $dir/$file1 | /bin/mailx -s "Monitoring Status of $server" XXXX@abcd.com

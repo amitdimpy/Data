@@ -1,0 +1,169 @@
+#!/usr/bin/python3
+# New module for taking encrypted password was created - Amit SHARMA - 25-Jul-2022
+
+import requests
+from requests.auth import HTTPBasicAuth
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+import json
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import pandas as pd
+import base64
+
+def node_detail(paswd):
+    res1=requests.get('https://gpxclus01.sgp.st.com/api/cluster/nodes?vendor_serial_number=*&system_id=*&version.full=*&model=FAS8200&state=up&ha.enabled=true&serial_number=*&location=*&fields=uptime&return_records=true&return_timeout=15', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('NODE_NAME',"",'SERIAL_NO',"   ",'MODEL'," ",'SYSTEM_ID',"                      ",'ONTAP_VERSION',"                                                ",'UPTIME',"  ",'HA_STATUS', file=file1)
+    print('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------', file=file1)
+    for data in res1.json()['records']:
+        print(data['name'],"   ",data['serial_number'],data['model'],data['system_id'],"       ",data['version']['full'],"  ",data['uptime'],"  ",data['ha']['enabled'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def interface(paswd):
+    res2=requests.get('https://gpxclus01.sgp.st.com/api/network/ip/interfaces?svm.name=*&ip.address=*&services=*&name=*&return_records=true', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('LOGICAL_INTERFACE',"     ",'IP_ADDRESS',"      ",'NETWORK_SERVICES', file=file1)
+    print('-------------------------------------------------------------------------------', file=file1)
+    for data in res2.json()['records']:
+        print(data['name'],"    ",data['ip']['address'],"       ",data['services'], file=file1)
+    print("\n", file=file1)
+    file1.close();	
+
+def ha(paswd):
+    res3=requests.get('https://gpxclus01.sgp.st.com/api/svm/peers?svm.name=*&peer.svm.name=*&name=*&return_records=true', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('VSERVER',"       ",'HA_VSERVER', file=file1)
+    print('------------------------------------------', file=file1)
+    for data in res3.json()['records']:
+        print(data['svm']['name'],"    ",data['peer']['svm']['name'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def aggr(paswd):
+    res4=requests.get('https://gpxclus01.sgp.st.com/api/storage/aggregates?state=*&home_node.name=*&return_records=true&return_timeout=15', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('NODE',"  ",'AGGR'," ",'STATE', file=file1)
+    print('----------------------------', file=file1)
+    for data in res4.json()['records']:
+        print(data['home_node']['name'],data['name'],data['state'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def license(paswd):
+    res7=requests.get('https://gpxclus01.sgp.st.com/api/cluster/licensing/licenses?licenses.serial_number=*&licenses.owner=*&licenses.active=true&return_records=true&return_timeout=15', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('LICENSE_NAME',"        ",'LIC_OWNER',"    ",'LICENSE_NO',"                               ",'LIC_ACTIVE', file=file1)
+    print('---------------------------------------------------------------------------------------------------------', file=file1)
+    for data in res7.json()['records']:
+        for l in range(len(data['licenses'])):
+            print(data['name'],"        ",data['licenses'][l]['owner'],"    ",data['licenses'][l]['serial_number'],"                               ",data['licenses'][l]['active'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def network(paswd):
+    res8=requests.get('https://gpxclus01.sgp.st.com/api/network/ethernet/ports?state=*&broadcast_domain.ipspace.name=*&node.name=*&type=*&mac_address=*&mtu=*&return_records=true&return_timeout=15', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('PORT_NAME','MAC_ADDR',"  ",'NODE_NAME','PORT_TYPE','MTU','PORT_STATE', file=file1)
+    print('--------------------------------------------------------------------', file=file1)
+    for data in res8.json()['records']:
+        print(data['name'],"      ",data['mac_address'],"    ",data['node']['name'],"    ",data['type'],"      ",data['mtu'],"    ",data['state'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def shelves(paswd):
+    res9=requests.get('https://gpxclus01.sgp.st.com/api/storage/shelves?module_type=*&state=*&model=*&serial_number=*&name=*&return_records=true&return_timeout=15', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('SHELF_NAME','SERIAL_NO',"         ",'MODEL',"    ",'MODULE_TYPE','STATE', file=file1)
+    print('-----------------------------------------------------------------------', file=file1)
+    for data in res9.json()['records']:
+        print(data['name'],"    ", data['serial_number'],"   ",data['model'],"     ",data['module_type'],"    ",data['state'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def export(paswd):
+    res5=requests.get('https://gpxclus01.sgp.st.com/api/storage/qtrees?export_policy.name=*&name=*&svm.name=*&return_records=true', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('VSERVER',"     ",'VOLUME',"    ",'EXPORT_POLICY', file=file1)
+    print('---------------------------------------------------', file=file1)
+    for data in res5.json()['records']:
+        print(data['svm']['name'],"   ",data['volume']['name'],"    ",data['export_policy']['name'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def vol_state(paswd):
+    res6=requests.get('https://gpxclus01.sgp.st.com/api/storage/volumes?svm.name=*&aggregates.name=*&type=*&state=*&snapshot_policy.name=*&language=*&return_records=true', auth = ('discvadm' , paswd), verify=False, timeout=5)
+    file1 = open("gpxclus01_details.txt","a")
+    print('VSERVER',"     ",'AGGR',"       ",'VOLUME',"    ",'STATE',"      ",'SNAP_POLICY',"      ", file=file1)
+#    print('VSERVER',"     ",'AGGR',"       ",'VOLUME',"    ",'STATE',"      ",'SNAP_POLICY',"      ",'LANGUAGE', file=file1)
+    print('----------------------------------------------------------------------------------', file=file1)
+    for data in res6.json()['records']:
+        for i in data['aggregates']:
+            print(data['svm']['name'],"  ",i['name'],"       ",data['name'],"      ",data['state'],"   ",data['snapshot_policy']['name'],"   ",file=file1)
+#            print(data['svm']['name'],"  ",i['name'],"       ",data['name'],"      ",data['state'],"   ",data['snapshot_policy']['name'],"   ",data['language'], file=file1)
+    print("\n", file=file1)
+    file1.close();
+
+def send_mail():
+    SMTP_SERVER = "smtpapp1.sgp.st.com"
+    SMTP_PORT = "25"
+#   SMTP_USERNAME = #username
+#   SMTP_PASSWORD = #password
+#   Ask user for device number to append to email subject
+#   DevNum = raw_input("Enter device number: ")
+
+#Fill out To/From/Subject fields
+    EMAIL_TO = "ict_iog_tse_snb@list.st.com"
+    EMAIL_FROM = "root@eul398.sgp.st.com"
+    EMAIL_SUBJECT = "GPXCLUS01 FILER STATUS"
+    EMAIL_CC = "amit.sharma@st.com"
+#TODO automatically increment DevNum based on previously accessed text file
+
+#Date format to use in subject
+#    DATE_FORMAT = "%m/%d/%Y"
+
+#TODO remember what the hell this line does
+#    EMAIL_SPACE = ", "
+
+#Open log file and pull info
+#TODO truncate output so we only get the necessary info from the log file, currently pulls ENTIRE log into email
+    LOG = open('gpxclus01_details.txt')
+    DATA = LOG.read()
+
+    msg = MIMEText(DATA)
+    LOG.close()
+    msg['Subject'] = EMAIL_SUBJECT
+    msg['To'] = EMAIL_TO
+    msg['From'] = EMAIL_FROM
+    msg['Cc'] = EMAIL_CC
+    mail = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+#    mail.starttls()
+#    mail.login(SMTP_USERNAME, SMTP_PASSWORD)
+    mail.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+    mail.quit()	;
+
+def encr_paswd():
+    paswd = (base64.b64decode("JHRyMG5nUGFzc3dvcmQ=").decode("utf-8"))
+    return paswd
+
+def main():
+    file1 = open("gpxclus01_details.txt","w")
+    node_detail(encr_paswd())
+    interface(encr_paswd())
+    ha(encr_paswd())
+    aggr(encr_paswd())
+    license(encr_paswd())
+    network(encr_paswd())
+    shelves(encr_paswd())
+    export(encr_paswd())
+    vol_state(encr_paswd())
+    send_mail()
+    file1.close()
+#    print();
+
+if __name__ == "__main__":
+    main()

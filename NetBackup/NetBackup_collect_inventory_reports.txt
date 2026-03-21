@@ -1,0 +1,88 @@
+#!/usr/bin/sh
+# NetBackup details
+
+export PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+dir=/opt/home/SCRIPTS
+file1=bkpsvr1_final_monitor.txt
+nonrew=bkpsvr1_NonRewindDrivePath.txt
+sernum=bkpsvr1_drive_sernum.txt
+log_date=`date +%d-%h-%Y-%H:%M:%S`
+
+if [ -f "$dir/$file1" ]
+then
+	rm $dir/$file1 > /dev/null 2>&1
+	touch $dir/$file1
+else
+	touch $dir/$file1
+fi
+echo "##########################################################################" >> $dir/$file1
+echo "	REPORT OF bkpsvr1 DATE : $log_date	" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "##########################################################################" >> $dir/$file1
+echo " " >> $dir/$file1
+var1=`/usr/openv/netbackup/bin/admincmd/bpdbjobs | grep -i catalog | awk '{print $5}' | head -1`
+var5=`/usr/openv/netbackup/bin/admincmd/bpdbjobs | grep -i catalog | awk '{print $10,$11}' | head -1`
+if [ "$var1" -eq "0" ]
+then
+	echo "Last Catalog Backup Status : SUCCESSFUL $var5" >> $dir/$file1
+else
+	echo "Last Catalog Backup Status : UNSUCCESSFUL $var5" >> $dir/$file1
+fi
+echo " " >> $dir/$file1
+var25=`/usr/openv/netbackup/bin/bpclntcmd -get_local_server_patch_version`
+echo "NETBACKUP VERSION : $var25" >> $dir/$file1
+echo " " >> $dir/$file1
+var6=`/usr/openv/volmgr/bin/vmoprcmd -d ds | grep -i down`
+if [ ! -z "$var6" ]
+then
+	echo "DRIVE STATUS : DOWN" >> $dir/$file1
+else
+	echo "DRIVE STATUS : UP" >> $dir/$file1
+fi
+var2=`/opt/veritas/openv/volmgr/bin/vmquery -l -pn SCRATCH | wc -l`
+var21=`/opt/veritas/openv/volmgr/bin/vmquery -l -pn SCRATCH | grep -i l4 | wc -l`
+var22=`/opt/veritas/openv/volmgr/bin/vmquery -l -pn SCRATCH | grep -i l8 | awk '{print $8}' | grep 0 | wc -l`
+var23=`/opt/veritas/openv/volmgr/bin/vmquery -l -pn SCRATCH | grep -i l6 | awk '{print $8}' | grep 2 | wc -l`
+var3=`/usr/openv/netbackup/bin/goodies/available_media | grep -i FROZEN | wc -l`
+var4=`/usr/openv/netbackup/bin/admincmd/bpdbjobs | grep -i queue | wc -l`
+var8=`/usr/openv/volmgr/bin/vmoprcmd -d ds | grep hcart | wc -l`
+var10=`/usr/openv/netbackup/bin/admincmd/bpimagelist -hoursago 24 -L | grep "ID:" | grep L4 | awk '{print $NF}' | sort | uniq | wc -l`
+var11=`/usr/openv/netbackup/bin/admincmd/bpimagelist -hoursago 24 -L | grep "ID:" | grep L6 | awk '{print $NF}' | sort | uniq | wc -l`
+var24=`/usr/openv/netbackup/bin/admincmd/bpimagelist -hoursago 24 -L | grep "ID:" | grep L8 | awk '{print $NF}' | sort | uniq | wc -l`
+/usr/openv/netbackup/bin/admincmd/bpimagelist -hoursago 24 -U | tail -n +3 > /tmp/NBList
+/usr/bin/sort -t/ -k 1n,1 /tmp/NBList > /tmp/NBList1
+var7=`cat /tmp/NBList1  | awk 'BEGIN{sum=0}{sum=sum+$5/1024/1024}END{printf("%d ",sum)}'`
+echo "PATH" > $dir/bkpsvr1_NonRewindDrivePath.txt
+echo "------------" >> $dir/bkpsvr1_NonRewindDrivePath.txt
+/usr/openv/volmgr/bin/tpconfig -dl | grep NonRewindDrivePath | awk '{print $NF}' >> $dir/bkpsvr1_NonRewindDrivePath.txt
+echo "     SERIAL_NUMBER" > $dir/bkpsvr1_drive_sernum.txt
+echo "----------------------------" >> $dir/bkpsvr1_drive_sernum.txt
+/usr/openv/volmgr/bin/tpconfig -dl | grep "Serial Number" | awk '{print $NF}' >> $dir/bkpsvr1_drive_sernum.txt
+var9=`/usr/openv/volmgr/bin/tpconfig -dl | grep "robotic path" | paste -s -d ","`
+echo " " >> $dir/$file1
+echo "TOTAL DRIVES EXISTS : $var8" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL SCRATCH TAPES : $var2" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO4 SCRATCH TAPES : $var21" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO8 SCRATCH TAPES IN LIB1SAF : $var22" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO6 SCRATCH TAPES IN LIB2SAF : $var23" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL FROZEN MEDIA : $var3" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "BACKUP QUEUE ON bkpsvr1 : $var4" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO4 TAPES USED IN 24 HOURS : $var10" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO6 TAPES USED IN 24 HOURS : $var11" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL LTO8 TAPES USED IN 24 HOURS : $var24" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "TOTAL DATA BACKED UP IN 24 HOURS (GB) :- $var7" >> $dir/$file1
+echo " " >> $dir/$file1
+echo "ROBOT : $var9" >> $dir/$file1
+echo " " >> $dir/$file1
+paste $dir/bkpsvr1_NonRewindDrivePath.txt $dir/bkpsvr1_drive_sernum.txt >> $dir/$file1
+echo " " >> $dir/$file1

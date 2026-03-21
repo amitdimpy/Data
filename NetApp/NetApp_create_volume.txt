@@ -1,0 +1,58 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Define variable to Create Volume
+  # vars:
+  #   ansible_python_interpreter: /usr/bin/python3
+  #   hostname: "{{ hostname }}"
+  #   username: "{{ USERNAME }}"
+  #   password: "{{ PASSWORD }}"
+  #   vserver: "{{ vserver }}"
+  #   aggr: aggr1_1
+  #   vol_name: "{{ vol_name }}"
+  #   clients: "{{ clients }}"
+  #   vol_size: "{{ vol_size }}"
+  #   vol_size_unit: gb
+  #   percent_snapshot_space: 5
+  tasks:
+  - name: Create Policy
+    na_ontap_export_policy:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Setup rules
+    na_ontap_export_policy_rule:
+      state: present
+      policy_name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      client_match: "{{ clients }}"
+      ro_rule: any
+      rw_rule: any
+      super_user_security: any
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
+  - name: Create Volume
+    na_ontap_volume:
+      state: present
+      name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      aggregate_name: "{{ aggr }}"
+      size: "{{ vol_size }}"
+      size_unit: "{{ vol_size_unit }}"
+      policy: "{{ vol_name }}"
+      percent_snapshot_space: "{{ percent_snapshot_space }}"
+      junction_path: "/vol/{{ vol_name }}"
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false

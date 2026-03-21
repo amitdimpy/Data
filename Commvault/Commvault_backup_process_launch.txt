@@ -1,0 +1,63 @@
+---
+- hosts: "{{ hname|lower }}"
+  gather_facts: no
+
+  tasks:
+
+  - name: Set python interpreter
+    shell: |
+        if [ -f /usr/bin/python3 ]
+        then
+          ansible_python_interpreter=/usr/bin/python3
+        elif [ -f /usr/bin/python2 ]
+        then
+          ansible_python_interpreter=/usr/bin/python2
+        fi
+
+  - name: Create Backup Script directory in tmp
+    file:
+      path: /{{ item }}/bkp_script/
+      state: directory
+      mode: '0755'
+    with_items:
+      - tmp
+      - home
+
+  - name: Copy backup script from satellite server
+    get_url:
+      url: "https://<Package-URL>.com/artifactory/CV/{{ item }}"
+      dest: /tmp/bkp_script/
+      validate_certs: false
+      url_username: "{{ PKG_USERNAME }}"
+      url_password: "{{ PKG_PASSWORD }}"
+    with_items: 
+      - CV_od_sybckapp.sh
+      - CV_od_prod_sybckapp.xml
+      - CV_wwdc_backup.service 
+      
+  - name: Modify CVDISPLAYNAME param in xml file
+    shell: |
+      dpnm=`commvault status | tail -3 | head -1 | awk -F "= " '{print $NF}'`
+      sed -i 's/CVDISPLAYNAME/'$dpnm'/g' /tmp/bkp_script/CV_od_prod_sybckapp.xml
+
+  - name: Rename files
+    shell: |
+      mv /tmp/bkp_script/CV_od_sybckapp.sh /home/bkp_script/sybckapp.sh
+      mv /tmp/bkp_script/CV_od_prod_sybckapp.xml /home/bkp_script/sybckapp.xml
+      mv /tmp/bkp_script/CV_wwdc_backup.service /etc/systemd/system/wwdc_backup.service
+      chown root:root /home/bkp_script/sybckapp.sh /home/bkp_script/sybckapp.xml /etc/systemd/system/wwdc_backup.service 
+      chmod 755 /home/bkp_script/sybckapp.sh /home/bkp_script/sybckapp.xml
+      chmod 664 /etc/systemd/system/wwdc_backup.service
+
+  - file:
+      path: /tmp/
+      state: absent
+
+  - name: Systemctl Daemon
+    shell: |
+      systemctl daemon-reload
+      systemctl enable wwdc_backup.service
+      systemctl start wwdc_backup.service
+
+  - name: Launch backup script 
+    command: /home/bkp_script/sybckapp.sh 2>&1

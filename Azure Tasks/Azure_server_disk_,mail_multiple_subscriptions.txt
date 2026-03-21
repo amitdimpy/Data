@@ -1,0 +1,32 @@
+---
+# Purpose: To send mail of disk consumption details of subscriptions
+
+- hosts:  localhost 
+  gather_facts: no
+  vars:
+    log_date: "{{ lookup('pipe', 'date +%d-%b-%Y-%H') }}"
+  
+  tasks:
+
+  - name: Rename file with date
+    shell: |
+      mv /tmp/work/AZURE/diskinfo/allvms_output.csv /tmp/work/AZURE/diskinfo/allvms_output_{{log_date}}.csv
+
+  - name: Send email with attachment
+    mail:
+      host: <SMTP-SERVER>.com
+      from: "XXXXXX@yyyyy.com"
+      to:
+        - XXXXXXX@abcdcom
+      cc:
+        - XXXXX@abcd.com
+        - YYYYY@abcd.com
+      subject: 'Azure Disk Storage Usage Information'
+      body: |
+        Hello All,
+        Attached report contains the Disk Usage Details of Non-Prod Subscriptions : Subscription1,Subscription2.
+        It provides information for FINOPS.
+        Regards,
+        XXXXX
+      attach: 
+      - /tmp/work/AZURE/diskinfo/allvms_output_{{log_date}}.csv

@@ -1,0 +1,155 @@
+---
+- hosts: "{{ hname|lower }}"
+  gather_facts: yes
+  name: Pre-requisites
+  vars:
+    CommSerHname: "<COMMSERVE>.com"
+    AUTHCODE: "XXXXXX"
+
+  tasks:
+
+  - name: Set python interpreter
+    shell: |
+        if [ -f /usr/bin/python3 ]
+        then
+          ansible_python_interpreter=/usr/bin/python3
+        elif [ -f /usr/bin/python2 ]
+        then
+          ansible_python_interpreter=/usr/bin/python2
+        fi
+
+  - file:
+      path: /mnt/crash/CV
+      state: directory
+      mode: 0755
+
+  - name: Copy backup script from satellite server
+    get_url:
+      url: "https://<Package-URL>.com/CV_prod_ondemand_custom_pkg.tar.gz"
+      dest: /mnt/crash/CV
+      validate_certs: false
+      url_username: "{{ PKG_USERNAME }}"
+      url_password: "{{ PKG_PASSWORD }}"
+
+  - name: Untar software package on server
+    unarchive:
+      src: /mnt/crash/CV/CV_prod_ondemand_custom_pkg.tar.gz
+      dest: /mnt/crash/CV
+      remote_src: yes
+
+  - name: Execute the package installation script
+    shell: "/mnt/crash/CV/pkg/silent_install -p /mnt/crash/CV/pkg/default.xml"
+
+  - file:
+      path: /mnt/crash/CV
+      state: absent
+
+  - name: Generate QSDK token for CV login
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/Login"
+      method: POST
+      body_format: json
+      headers: 
+        Accept: "application/json"
+        Content-Type: "application/json"
+      body: 
+        username: "{{ USERNAME }}"
+        password: "{{ PASSWORD }}"
+      status_code: 200
+    register: result
+    delegate_to: localhost
+  
+  - debug: var=result.json.token
+
+  - name: Check CS hostname
+    shell: >
+        commvault status |
+        grep "CommServe Client Name" |
+        awk -F "= " '{print $NF}'
+    register: cscname
+
+  - debug: var=cscname.stdout
+
+  - name: Check display name
+    shell: >
+        commvault status |
+        tail -3 |
+        head -1 |
+        awk -F "= " '{print $NF}'
+    register: display_name
+
+  - debug: var=display_name.stdout
+
+  - name: Simwrapper check
+    shell: |
+        if [ "{{ cscname.stdout }}" != "azubw00082" ]
+        then
+           /opt/commvault/Base/SIMCallWrapper -OpType 1000 -CSHost "{{ CommSerHname }}" -ClientName "{{ display_name.stdout }}" -ClientHostName "{{ display_name.stdout }}" -authcode "{{ AUTHCODE }}"
+           /usr/bin/commvault stop
+           sleep 5
+           /usr/bin/commvault start
+           sleep 60
+        fi
+
+  - name: Pause of 5 minute
+    pause:
+      minutes: 5
+
+  - name: Commvault logout
+    uri:
+      url: "http://<COMMSERVE>.com/webconsole/api/Logout"
+      method: POST
+      body_format: json
+      headers:
+        Accept: 'application/json'
+        Authtoken: "{{ result.json.token }}"
+    register: logmsg 
+    delegate_to: localhost
+
+  - name: Create Backup Script directory in tmp
+    file:
+      path: /{{ item }}/bkp_script/
+      state: directory
+      mode: '0755'
+    with_items:
+      - tmp
+      - home
+
+  - name: Copy backup script from satellite server
+    get_url:
+      url: "https://<PACKAGE-URL>.com/{{ item }}"
+      dest: /tmp/bkp_script/
+      validate_certs: false
+      url_username: "{{ PKG_USERNAME }}"
+      url_password: "{{ PKG_PASSWORD }}"
+    with_items: 
+      - CV_od_sybckapp.sh
+      - CV_od_prod_sybckapp.xml
+      - CV_wwdc_backup.service 
+      
+  - name: Modify CVDISPLAYNAME param in xml file
+    shell: |
+      dpnm=`commvault status | tail -3 | head -1 | awk -F "= " '{print $NF}'`
+      sed -i 's/CVDISPLAYNAME/'$dpnm'/g' /tmp/bkp_script/CV_od_prod_sybckapp.xml
+
+  - name: Rename files
+    shell: |
+      mv /tmp/bkp_script/CV_od_sybckapp.sh /home/bkp_script/sybckapp.sh
+      mv /tmp/bkp_script/CV_od_prod_sybckapp.xml /home/bkp_script/sybckapp.xml
+      mv /tmp/bkp_script/CV_wwdc_backup.service /etc/systemd/system/wwdc_backup.service
+      chown root:root /home/bkp_script/sybckapp.sh /home/bkp_script/sybckapp.xml /etc/systemd/system/wwdc_backup.service 
+      chmod 755 /home/bkp_script/sybckapp.sh /home/bkp_script/sybckapp.xml
+      chmod 664 /etc/systemd/system/wwdc_backup.service
+
+  - file:
+      path: /tmp/
+      state: absent
+
+  - name: Systemctl Daemon
+    shell: |
+      systemctl daemon-reload
+      systemctl enable wwdc_backup.service
+      systemctl start wwdc_backup.service
+
+  - name: Launch backup script 
+    command: /home/bkp_script/sybckapp.sh 2>&1

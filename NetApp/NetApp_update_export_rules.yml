@@ -1,0 +1,31 @@
+---
+- hosts: localhost
+  collections:
+    - netapp.ontap
+  name: Pre requisites
+  vars:
+  #  ansible_python_interpreter: /usr/bin/python3
+  #  hostname: "{{ hostname }}"
+  #  username: "{{ USERNAME }}"
+  #  password: "{{ PASSWORD }}"
+  #  vserver: "{{ vserver }}"
+  #  aggr: aggr1_1
+  #  vol_name: "{{ vol_name }}"
+  #  ruleindex: "{{ ruleindex }}"
+  #  clients: "{{ clients }}"
+  tasks:
+  - name: Update export rules
+    na_ontap_export_policy_rule:
+      state: present
+      policy_name: "{{ vol_name }}"
+      vserver: "{{ vserver }}"
+      rule_index: "{{ ruleindex }}"
+      client_match: "{{ clients }}"
+      ro_rule: any
+      rw_rule: any
+      super_user_security: any
+      hostname: "{{ hostname }}"
+      username: "{{ USERNAME }}"
+      password: "{{ PASSWORD }}"
+      https: true
+      validate_certs: false
